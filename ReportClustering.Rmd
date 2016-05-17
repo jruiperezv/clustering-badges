@@ -1,0 +1,180 @@
+---
+title: Additional Report - Detecting and Clustering Students by their Gamification
+  Behavior with Badges
+author: "Jose A. Ruiperez-Valiente, Pedro J. Muñoz-Merino, Carlos Delgado Kloos"
+date: "17 de mayo de 2016"
+output: pdf_document
+---
+
+# Summary
+This is an additional report to the article titled as "Detecting and Clustering Students by their Gamification Behavior with Badges: A Case Study in Engineering Education" and submitted for publication to the International Journal of Engineering Education. The report contains an exploratory analysis, correlation among the different metrics, analysis by plot of specific students and the clustering of students by badge indicators, as described in the paper.
+
+# Loading libraries
+```{r libraries, message=FALSE, warning=FALSE}
+library(ggplot2)
+library(reshape2)
+library(dplyr)
+library(Hmisc)
+library(corrplot)
+library(grid)
+```
+
+# Preparing data
+```{r data}
+# Load data
+allStudents <- read.csv("allStudents.csv", header = TRUE, sep = ";" , dec = ",")
+differentStudents <- read.csv("differentStudents.csv", header = TRUE, sep = ";", dec = ",")
+
+# Remove students who did not participated for at least 60 min from total
+allStudents <- allStudents[allStudents$Total_Time >= 60,]
+```
+
+
+```{r tidy, warning=FALSE, include=FALSE}
+allStudents$Course <- factor(allStudents$Course)
+allStudents$Genre <- factor(allStudents$Genre)
+
+differentStudents$Course <- factor(differentStudents$Course)
+differentStudents$Genre <- factor(differentStudents$Genre)
+differentStudents$Cluster_TwoSteps <- factor(differentStudents$Cluster_TwoSteps)
+
+interestingStudents <- c("http://moodleid.khanacademy.org/uc3m/388", "http://moodleid.khanacademy.org/uc3m/470", "http://moodleid.khanacademy.org/uc3m/357", "http://moodleid.khanacademy.org/uc3m/340", "http://moodleid.khanacademy.org/uc3m/454")
+
+c("Topic_Intention", "Repetitive_Intention", "Concentration", "Badges_Per_Time", "Total_Time", "Proficient_Exercises", "Completed_Videos", "Exercise_Abandon", "Video_Abandon", "Optional_Elements")
+```
+
+# Exploratory analysis and descriptive statistics
+```{r summary, echo=TRUE, message=TRUE, warning=TRUE}
+# Metrics used within the analysis
+metricsAnalysis <- c("User_id", "Course", "Cluster_TwoSteps", "Topic_Intention", "Repetitive_Intention", "Concentration", "Badges_Per_Time", "Total_Time", "Proficient_Exercises", "Completed_Videos", "Exercise_Abandon", "Video_Abandon", "Optional_Elements")
+
+metricsBadges <- c("Topic_Intention", "Repetitive_Intention", "Concentration", "Badges_Per_Time")
+
+metricsOthers <- c("Cluster_TwoSteps", "Total_Time", "Proficient_Exercises", "Completed_Videos", "Exercise_Abandon", "Video_Abandon", "Optional_Elements")
+
+# Structure of the dataframe used for the analysis
+str(differentStudents[,metricsAnalysis])
+
+# Summary of the badge indicators
+summary(differentStudents[,metricsBadges])
+
+# Summary of the rest of the indicators used in the study
+summary(differentStudents[,metricsOthers])
+```
+
+# Relationship between badge indicators and others
+```{r correlations, echo=TRUE, message=TRUE, warning=TRUE}
+corMatrix <- cor(x = differentStudents[,c("Topic_Intention", "Repetitive_Intention", "Concentration", "Badges_Per_Time", "Total_Time", "Proficient_Exercises", "Completed_Videos", "Exercise_Abandon", "Video_Abandon", "Optional_Elements")])
+corrplot(corMatrix, method = "circle")
+```
+
+# Analyzing the behavior of specific studen
+
+Define a new coordinate system required for radar chart
+```{r specific students 1, echo=TRUE, message=TRUE, warning=TRUE}
+
+coord_radar <- function (theta = "x", start = 0, direction = 1) 
+{
+  theta <- match.arg(theta, c("x", "y"))
+  r <- if (theta == "x") 
+    "y"
+  else "x"
+  ggproto("CordRadar", CoordPolar, theta = theta, r = r, start = start, 
+          direction = sign(direction),
+          is_linear = function(coord) TRUE)
+}
+```
+
+Change the format of data for the visualization
+```{r specific students 2, echo=TRUE, message=TRUE, warning=TRUE}
+selectedData <- allStudents[,c("Topic_Intention", "Repetitive_Intention", "Concentration", "Badges_Per_Time", "Total_Time", "Proficient_Exercises", "Completed_Videos")]
+
+# rescale all variables to lie between 0 and 1 
+selectedDataScaled <- as.data.frame(lapply(selectedData, ggplot2:::rescale01))
+
+# Adding ID of students as variable
+selectedDataScaled$User_id <- allStudents$User_id
+
+# Melting to long format data
+as.data.frame(melt(selectedDataScaled,id.vars="User_id")) -> meltSelectedDataScaled
+
+# interestingStudents variable contains the subset of students that we want to plot
+meltSelectedDataScaled <- subset(meltSelectedDataScaled, User_id %in% interestingStudents) 
+```
+
+Once the data is in the correct format we can build the radar chart to compare the different students, we use ggplot2
+```{r specific students 3, echo=TRUE, message=TRUE, warning=TRUE}
+selected_plot <- ggplot(meltSelectedDataScaled, aes(x = variable, y = value, color= User_id, linetype = User_id)) + 
+    geom_path(aes(group = User_id), size = 1) + coord_radar() +
+    theme_bw() + theme(strip.text.x = element_text(size = rel(0.8), face = "bold"), 
+        axis.text.x = element_text(size = rel(0.8) , face = "bold"),
+        legend.position = "bottom") + 
+    labs(title = "Selection of students", x="Use of the platform and badge indicators", y = "Normalized value [0~1]") +
+    scale_linetype_manual(values=c(1,3,2,1,2), name="", 
+                         breaks=interestingStudents,
+                         labels=c("Student A", "Student B", "Student C", "Student D", "Student E")) +
+    scale_color_manual(values=c('black','black',
+                                'black', '#969696',
+                                '#969696'), name="", 
+                       breaks=interestingStudents,
+                       labels=c("Student A", "Student B", "Student C", "Student D", "Student E"))
+
+print(selected_plot)
+```
+
+# Clustering students by their badge indicators
+We peform a Two Step Cluster analysis using SPSS software, and store the cluster clasification within 'Cluster_TwoSteps' variable. Now we present some descriptive summary of the metrics for each cluster.
+```{r clustering 1, echo=TRUE, message=TRUE, warning=TRUE}
+# Metrics for cluster analysis
+metricsCluster <-  c("Topic_Intention", "Repetitive_Intention", "Concentration", "Badges_Per_Time", "Total_Time", "Proficient_Exercises", "Completed_Videos")
+
+# Summary for Cluster 1
+summary(subset(differentStudents, Cluster_TwoSteps == 1)[,metricsCluster])
+
+# Summary for Cluster 2
+summary(subset(differentStudents, Cluster_TwoSteps == 2)[,metricsCluster])
+
+# Summary for Cluster 3
+summary(subset(differentStudents, Cluster_TwoSteps == 3)[,metricsCluster])
+```
+
+Prepare and transform the format of data for the visualizations
+```{r clustering 2, echo=TRUE, message=TRUE, warning=TRUE}
+# Select variables we want to use for plot
+differentSelectedData <- differentStudents[,c("User_id", "Course", "Cluster_TwoSteps", "Topic_Intention", "Repetitive_Intention", "Concentration", "Badges_Per_Time", "Total_Time", "Proficient_Exercises", "Completed_Videos")]
+
+# Rescale all variables to lie between 0 and 1 
+maxs <- apply(differentSelectedData[, !names(differentSelectedData) %in% c("User_id", "Course", "Cluster_TwoSteps")], 2, max)
+mins <- apply(differentSelectedData[, !names(differentSelectedData) %in% c("User_id", "Course", "Cluster_TwoSteps")], 2, min)
+
+differentSelectedData[, !names(differentSelectedData) %in% c("User_id", "Course", "Cluster_TwoSteps")] <- scale(differentSelectedData[, !names(differentSelectedData) %in% c("User_id", "Course", "Cluster_TwoSteps")], center = mins, scale = maxs - mins)
+
+badge.metrics <- c("Topic_Intention", "Repetitive_Intention", "Concentration", "Badges_Per_Time")
+evaluation.metrics <- c("Total_Time", "Proficient_Exercises", "Video_Progress")
+
+meltDifferentStudents <- melt(data = differentSelectedData, id.vars = c("User_id", "Course", "Cluster_TwoSteps"), measure.vars = c("Topic_Intention", "Repetitive_Intention", "Concentration", "Badges_Per_Time", "Total_Time", "Proficient_Exercises", "Completed_Videos"), variable.name = "Indicator")
+```
+
+Create the two boxplots facetted by cluster. One for badge metrics and the other one with evaluation metrics
+```{r clustering 3, echo=TRUE, message=TRUE, warning=TRUE}
+p_badge_metrics <- ggplot(data = subset(meltDifferentStudents, Indicator %in% badge.metrics))  + 
+    geom_boxplot(aes(x=Indicator, y = value, fill = factor(Cluster_TwoSteps)), width = 1, alpha= .7) + theme_bw() + theme(legend.position = "bottom") + 
+    labs(x = "Badge metrics", y = "Normalized value [0~1]", title = "Badge metrics per cluster") + scale_fill_grey("Clusters")
+
+p_evaluation_fields <- ggplot(data = subset(meltDifferentStudents, Indicator %in% evaluation.metrics))  + 
+    geom_boxplot(aes(x=Indicator, y = value, fill = factor(Cluster_TwoSteps)), width = 1, alpha= .7) + theme_bw() + theme(legend.position = "bottom") +
+    labs(x = "Evaluation metrics", y = "Normalized value [0~1]", title = "Evaluation metrics per cluster") + scale_fill_grey("Clusters")
+
+# create a grid with the two boxplots
+grid.newpage()
+pushViewport(viewport(layout = grid.layout(2, 1, heights = unit(c(5, 5), "null"))))   
+print(p_badge_metrics, vp = viewport(layout.pos.row = 1, layout.pos.col = 1))         
+print(p_evaluation_fields, vp = viewport(layout.pos.row = 2, layout.pos.col = 1))
+```
+
+Finally, make a parallel coordinates visualization for the badge metrics facetted by cluster
+```{r clustering 4, echo=TRUE, message=TRUE, warning=TRUE}
+p_parallel <- ggplot(aes(y = value, x = Indicator, group = User_id), data = subset(meltDifferentStudents, Indicator %in% c(badge.metrics, "User_id"))) + geom_line(alpha = .4) +
+    facet_grid(Cluster_TwoSteps ~ .) + theme_bw() + labs(x = "Badge metrics", y = "Normalized value [0~1]", title = "Parallel coordinates badge metrics per cluster")
+print(p_parallel)
+```
